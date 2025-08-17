@@ -1,18 +1,32 @@
 # AI News Bot 配置文件示例
 # 复制此文件为 config.yml 并填写实际的配置信息
 
-# 飞书机器人配置
+# 飞书机器人配置 (支持多个群组推送)
 lark:
-  api_url: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_BOT_HOOK_ID"
-  api_secret: "your_lark_api_secret_here"
+  # 主要群组 (必须配置)
+  primary:
+    api_url: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_PRIMARY_BOT_HOOK_ID"
+    api_secret: "your_primary_lark_api_secret_here"
+    name: "主群组"
+  # 第二个群组 (可选，如需多群组推送请配置)
+  secondary:
+    api_url: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_SECONDARY_BOT_HOOK_ID"
+    api_secret: "your_secondary_lark_api_secret_here"
+    name: "备用群组"
+  # 第三个群组 (可选，可以添加更多群组)
+  # tertiary:
+  #   api_url: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_THIRD_BOT_HOOK_ID"
+  #   api_secret: "your_third_lark_api_secret_here"
+  #   name: "第三群组"
 
 # API 配置
 apis:
-  # AutoAgents AI 配置 - 主要的翻译和总结服务
+  # AutoAgents AI 配置 - 统一处理翻译和总结 (JSON格式)
   autoagentsai:
-    agent_id: "your_agent_id_here"
-    personal_auth_key: "your_personal_auth_key_here"
-    personal_auth_secret: "your_personal_auth_secret_here"
+    ai_agent:
+      agent_id: "your_agent_id_here"
+      personal_auth_key: "your_personal_auth_key_here"
+      personal_auth_secret: "your_personal_auth_secret_here"
 
 # Supabase 数据库配置
 # 从 https://supabase.com 创建项目后获取

@@ -1,6 +1,6 @@
 import os
 import yaml
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 
 class ConfigManager:
@@ -57,11 +57,50 @@ class ConfigManager:
             return default
     
     def get_lark_config(self) -> Dict[str, str]:
-        """获取飞书配置"""
+        """获取主要飞书配置（保持向后兼容）"""
+        # 优先使用新的primary配置，如果不存在则回退到旧配置
         return {
-            'api_url': self.get('lark.api_url'),
-            'api_secret': self.get('lark.api_secret')
+            'api_url': self.get('lark.primary.api_url') or self.get('lark.api_url'),
+            'api_secret': self.get('lark.primary.api_secret') or self.get('lark.api_secret'),
+            'name': self.get('lark.primary.name') or '主群组'
         }
+    
+    def get_all_lark_configs(self) -> List[Dict[str, str]]:
+        """获取所有飞书配置列表"""
+        configs = []
+        
+        # 检查新格式的配置
+        lark_section = self.get('lark')
+        if lark_section:
+            for key, config in lark_section.items():
+                if isinstance(config, dict) and 'api_url' in config:
+                    # 跳过无效配置
+                    api_url = config.get('api_url', '')
+                    api_secret = config.get('api_secret', '')
+                    
+                    if (api_url and not api_url.startswith('YOUR_') and 
+                        api_secret and not api_secret.startswith('YOUR_')):
+                        configs.append({
+                            'api_url': api_url,
+                            'api_secret': api_secret,
+                            'name': config.get('name', f'{key}群组'),
+                            'key': key
+                        })
+        
+        # 如果没有找到新格式配置，尝试旧格式
+        if not configs:
+            old_api_url = self.get('lark.api_url')
+            old_api_secret = self.get('lark.api_secret')
+            if (old_api_url and not old_api_url.startswith('YOUR_') and 
+                old_api_secret and not old_api_secret.startswith('YOUR_')):
+                configs.append({
+                    'api_url': old_api_url,
+                    'api_secret': old_api_secret,
+                    'name': '主群组',
+                    'key': 'primary'
+                })
+        
+        return configs
     
     def get_api_config(self) -> Dict[str, str]:
         """获取 API 配置"""
@@ -79,36 +118,12 @@ class ConfigManager:
             'personal_auth_secret': self.get('apis.autoagentsai.translate_agent.personal_auth_secret') or self.get('apis.autoagentsai.personal_auth_secret')
         }
     
-    def get_translate_agent_config(self) -> Dict[str, str]:
-        """获取翻译专用 Agent 配置"""
+    def get_ai_agent_config(self) -> Dict[str, str]:
+        """获取统一AI处理 Agent 配置 (JSON格式翻译+总结)"""
         return {
-            'agent_id': self.get('apis.autoagentsai.translate_agent.agent_id'),
-            'personal_auth_key': self.get('apis.autoagentsai.translate_agent.personal_auth_key'),
-            'personal_auth_secret': self.get('apis.autoagentsai.translate_agent.personal_auth_secret')
-        }
-    
-    def get_summary_agent_config(self) -> Dict[str, str]:
-        """获取总结专用 Agent 配置"""
-        return {
-            'agent_id': self.get('apis.autoagentsai.summary_agent.agent_id'),
-            'personal_auth_key': self.get('apis.autoagentsai.summary_agent.personal_auth_key'),
-            'personal_auth_secret': self.get('apis.autoagentsai.summary_agent.personal_auth_secret')
-        }
-    
-    def get_translate_agent2_config(self) -> Dict[str, str]:
-        """获取第二个翻译 Agent 配置"""
-        return {
-            'agent_id': self.get('apis.autoagentsai.translate_agent2.agent_id'),
-            'personal_auth_key': self.get('apis.autoagentsai.translate_agent2.personal_auth_key'),
-            'personal_auth_secret': self.get('apis.autoagentsai.translate_agent2.personal_auth_secret')
-        }
-    
-    def get_summary_agent2_config(self) -> Dict[str, str]:
-        """获取第二个总结 Agent 配置"""
-        return {
-            'agent_id': self.get('apis.autoagentsai.summary_agent2.agent_id'),
-            'personal_auth_key': self.get('apis.autoagentsai.summary_agent2.personal_auth_key'),
-            'personal_auth_secret': self.get('apis.autoagentsai.summary_agent2.personal_auth_secret')
+            'agent_id': self.get('apis.autoagentsai.ai_agent.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.ai_agent.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.ai_agent.personal_auth_secret')
         }
     
     def get_supabase_config(self) -> Dict[str, str]:

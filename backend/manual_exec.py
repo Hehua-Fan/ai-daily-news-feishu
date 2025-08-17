@@ -5,12 +5,12 @@ Manual execution of AI news sending
 Quick script to manually trigger news processing and sending.
 """
 
-from agents.feishu_sender import request_feishu
+from agents.feishu_sender import request_feishu_all_groups
 
 if __name__ == '__main__':
     print("🚀 手动执行AI新闻发送...")
     try:
-        response = request_feishu()
+        response = request_feishu_all_groups()
         if response and response.status_code == 200:
             print("✅ 新闻发送完成")
         else:

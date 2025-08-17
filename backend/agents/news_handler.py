@@ -5,6 +5,8 @@ This module provides the NewsHandler class for processing news data.
 """
 
 import time
+import re
+import json
 from tqdm import tqdm
 from autoagentsai.client import ChatClient
 from datetime import datetime, timedelta
@@ -21,7 +23,6 @@ from scraper.verge_scraper import VergeScraper
 from scraper.github_trending_scraper import GitHubTrendingScraper
 from scraper.product_hunt_scraper import ProductHuntScraper
 from scraper.a16z_scraper import A16zScraper
-from scraper.bloomberg_scraper import BloombergScraper
 from scraper.kr36_scraper import Kr36Scraper
 
 
@@ -43,82 +44,27 @@ class NewsHandler:
             GitHubTrendingScraper(),
             ProductHuntScraper(),
             A16zScraper(),
-            BloombergScraper(),
             Kr36Scraper()
         ]
         
-        # Initialize AI clients (lazy loading)
-        self._translate_client = None
-        self._summary_client = None
-        self._translate_client2 = None
-        self._summary_client2 = None
+        # Initialize AI client (unified for JSON processing)
+        self._ai_client = None
         
-        # Counter for alternating between agents
-        self._call_counter = 0
-        
-    def get_translate_client(self) -> ChatClient:
-        """Get translate AI client instance with lazy initialization"""
-        if self._translate_client is None:
+    def get_ai_client(self) -> ChatClient:
+        """Get unified AI client instance with lazy initialization"""
+        if self._ai_client is None:
             try:
-                translate_config = self.config.get_translate_agent_config()
-                self._translate_client = ChatClient(
-                    agent_id=translate_config["agent_id"],
-                    personal_auth_key=translate_config["personal_auth_key"],
-                    personal_auth_secret=translate_config["personal_auth_secret"]
+                ai_config = self.config.get_ai_agent_config()
+                self._ai_client = ChatClient(
+                    agent_id=ai_config["agent_id"],
+                    personal_auth_key=ai_config["personal_auth_key"],
+                    personal_auth_secret=ai_config["personal_auth_secret"]
                 )
             except Exception as e:
-                print(f"❌ 初始化翻译 AI 客户端失败: {e}")
-                print("💡 请检查 config.yml 中的 translate_agent 配置")
+                print(f"❌ AI 客户端初始化失败: {e}")
+                print("💡 请检查 config.yml 中的 ai_agent 配置")
                 raise e
-        return self._translate_client
-    
-    def get_summary_client(self) -> ChatClient:
-        """Get summary AI client instance with lazy initialization"""
-        if self._summary_client is None:
-            try:
-                summary_config = self.config.get_summary_agent_config()
-                self._summary_client = ChatClient(
-                    agent_id=summary_config["agent_id"],
-                    personal_auth_key=summary_config["personal_auth_key"],
-                    personal_auth_secret=summary_config["personal_auth_secret"]
-                )
-            except Exception as e:
-                print(f"❌ 初始化总结 AI 客户端失败: {e}")
-                print("💡 请检查 config.yml 中的 summary_agent 配置")
-                raise e
-        return self._summary_client
-    
-    def get_translate_client2(self) -> ChatClient:
-        """Get second translate AI client instance with lazy initialization"""
-        if self._translate_client2 is None:
-            try:
-                translate_config2 = self.config.get_translate_agent2_config()
-                self._translate_client2 = ChatClient(
-                    agent_id=translate_config2["agent_id"],
-                    personal_auth_key=translate_config2["personal_auth_key"],
-                    personal_auth_secret=translate_config2["personal_auth_secret"]
-                )
-            except Exception as e:
-                print(f"❌ 初始化第二个翻译 AI 客户端失败: {e}")
-                print("💡 请检查 config.yml 中的 translate_agent2 配置")
-                raise e
-        return self._translate_client2
-    
-    def get_summary_client2(self) -> ChatClient:
-        """Get second summary AI client instance with lazy initialization"""
-        if self._summary_client2 is None:
-            try:
-                summary_config2 = self.config.get_summary_agent2_config()
-                self._summary_client2 = ChatClient(
-                    agent_id=summary_config2["agent_id"],
-                    personal_auth_key=summary_config2["personal_auth_key"],
-                    personal_auth_secret=summary_config2["personal_auth_secret"]
-                )
-            except Exception as e:
-                print(f"❌ 初始化第二个总结 AI 客户端失败: {e}")
-                print("💡 请检查 config.yml 中的 summary_agent2 配置")
-                raise e
-        return self._summary_client2
+        return self._ai_client
     
     @staticmethod
     def get_target_date() -> str:
@@ -126,20 +72,12 @@ class NewsHandler:
         return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     
     def translate_title(self, title: str) -> str:
-        """Translate news title to Chinese using alternating translate AI clients"""
+        """Translate English title to Chinese using unified AI client"""
         prompt = f"请将以下英文新闻标题翻译成中文，只返回翻译结果，不要其他内容：\n\n{title}"
         
         try:
-            # Alternate between translate agents
-            self._call_counter += 1
-            if self._call_counter % 2 == 1:
-                client = self.get_translate_client()
-                agent_name = "translate1"
-            else:
-                client = self.get_translate_client2()
-                agent_name = "translate2"
-            
-            print(f"🌍 使用 {agent_name} 翻译标题")
+            client = self.get_ai_client()
+            print(f"🌍 使用统一AI翻译标题")
             content = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -150,19 +88,12 @@ class NewsHandler:
             return title  # Return original title if translation fails
     
     def summarize_content(self, content: str) -> str:
-        """Summarize news content in Chinese using alternating summary AI clients"""
+        """Summarize news content using unified AI client"""
         prompt = f"请对以下英文新闻内容用中文进行总结，总结内容不超过100个汉字，只返回总结结果：\n\n{content}"
         
         try:
-            # Alternate between summary agents (use same counter as translate for balance)
-            if self._call_counter % 2 == 1:
-                client = self.get_summary_client()
-                agent_name = "summary1"
-            else:
-                client = self.get_summary_client2()
-                agent_name = "summary2"
-            
-            print(f"📝 使用 {agent_name} 总结内容")
+            client = self.get_ai_client()
+            print(f"📝 使用统一AI总结内容")
             summary = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -199,13 +130,25 @@ class NewsHandler:
         try:
             title = news_item['title']
             content = news_item['content']
+            tag = news_item.get('tag', '')
             
-            # Translate title and summarize content
-            zh_title = self.translate_title(title)
+            # Skip title translation for GitHub and Product Hunt (they are usually in English already)
+            skip_translation_tags = ['GitHub', 'Product Hunt']
             
-            # Add 20 second delay between translation and summarization
-            print(f"⏳ 翻译完成，等待20秒后进行总结...")
-            time.sleep(20)
+            if tag in skip_translation_tags:
+                print(f"⏭️ 跳过 {tag} 标题翻译（已为英文）")
+                zh_title = title  # Use original title
+                
+                # Still summarize content with a shorter delay
+                print(f"⏳ 跳过翻译，等待5秒后进行总结...")
+                time.sleep(5)
+            else:
+                # Translate title for other sources
+                zh_title = self.translate_title(title)
+                
+                # Add 20 second delay between translation and summarization
+                print(f"⏳ 翻译完成，等待20秒后进行总结...")
+                time.sleep(20)
             
             summary = self.summarize_content(content)
             
@@ -222,32 +165,154 @@ class NewsHandler:
             print(f"❌ 处理新闻项目失败: {e}")
             return None
     
+    def batch_process_news_with_ai(self, news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Process all news items with AI to get JSON format results"""
+        print(f"🤖 批量处理 {len(news_items)} 篇新闻（JSON格式）")
+        
+        try:
+            # Prepare news data for AI processing
+            news_data = []
+            for i, news_item in enumerate(news_items):
+                item_data = {
+                    "id": i + 1,
+                    "source_name": news_item.get('tag', 'Unknown'),
+                    "original_title": news_item.get('title', ''),
+                    "content": news_item.get('content', '')[:1000]  # Limit content length
+                }
+                news_data.append(item_data)
+            
+            # Create AI query for JSON processing
+            query = f"""请处理以下{len(news_data)}篇新闻，对每篇新闻进行翻译和总结。
+
+要求：
+1. 对于source_name为"GitHub"或"Product Hunt"的新闻，标题不需要翻译，直接使用原标题
+2. 对于其他来源的英文标题，翻译成中文
+3. 对所有内容进行总结，控制在80字左右，不少于60字，不够的就扩写，够的就精简
+4. 严格按照JSON格式返回，不要添加任何其他文本
+
+返回格式（JSON数组）：
+[
+  {{
+    "id": 1,
+    "source_name": "来源名称",
+    "title": "处理后的标题（中文或原文）",
+    "summary": "内容总结"
+  }},
+  ...
+]
+
+新闻数据：
+"""
+            
+            for item in news_data:
+                query += f"""
+新闻 {item['id']}:
+- 来源: {item['source_name']}
+- 标题: {item['original_title']}
+- 内容: {item['content']}
+"""
+            
+            # Send to AI for processing
+            print("🤖 发送AI处理请求...")
+            ai_result = self.summarize_content(query)
+            
+            print(f"🔍 AI返回长度: {len(ai_result)} 字符")
+            print(f"📋 AI返回示例: {ai_result[:200]}...")
+            
+            # Parse JSON result
+            try:
+                # Extract JSON from AI response
+                
+                # Find JSON array in response
+                start_idx = ai_result.find('[')
+                end_idx = ai_result.rfind(']') + 1
+                
+                if start_idx == -1 or end_idx == 0:
+                    raise ValueError("未找到JSON数组")
+                
+                json_str = ai_result[start_idx:end_idx]
+                parsed_results = json.loads(json_str)
+                
+                print(f"✅ 成功解析 {len(parsed_results)} 条结果")
+                
+                # Convert to final format
+                processed_news = []
+                for result in parsed_results:
+                    news_id = result.get('id', 0) - 1  # Convert to 0-based index
+                    if 0 <= news_id < len(news_items):
+                        original_item = news_items[news_id]
+                        processed_item = {
+                            "date": self.get_target_date(),
+                            "title": original_item.get('title', ''),
+                            "zh_title": result.get('title', original_item.get('title', '')),
+                            "link": original_item.get('link', ''),
+                            "content": original_item.get('content', ''),
+                            "summary": result.get('summary', '无总结'),
+                            "tag": result.get('source_name', original_item.get('tag', ''))
+                        }
+                        processed_news.append(processed_item)
+                
+                return processed_news
+                
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"❌ JSON解析失败: {e}")
+                print(f"📄 原始返回: {ai_result}")
+                
+                # Fallback: create basic results
+                return self._create_fallback_results(news_items)
+                
+        except Exception as e:
+            print(f"❌ AI处理失败: {e}")
+            return self._create_fallback_results(news_items)
+    
+    def _create_fallback_results(self, news_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Create fallback results when AI processing fails"""
+        print("🔄 使用备用方案处理新闻")
+        processed_news = []
+        
+        for news_item in news_items:
+            processed_item = {
+                "date": self.get_target_date(),
+                "title": news_item.get('title', ''),
+                "zh_title": news_item.get('title', ''),  # Use original title as fallback
+                "link": news_item.get('link', ''),
+                "content": news_item.get('content', ''),
+                "summary": "AI处理失败，无法生成总结",
+                "tag": news_item.get('tag', '')
+            }
+            processed_news.append(processed_item)
+        
+        return processed_news
+    
+
+
     def process_news(self) -> List[Dict[str, Any]]:
-        """Main method to process all news"""
+        """Main method to process all news with JSON-based AI processing"""
         target_date = self.get_target_date()
         print(f"🚀 开始处理 {target_date} 的新闻")
         
-        # Fetch raw news
+        # Step 1: Fetch all raw news
+        print("📥 阶段1：获取所有新闻内容")
         raw_news = self.fetch_all_news()
         
         if not raw_news:
             print("📭 没有获取到新闻数据")
             return []
         
-        # Process news items with AI
-        processed_news = []
-        for i, news in enumerate(tqdm(raw_news, desc="🧠 Processing news with AI")):
-            processed_item = self.process_news_item(news)
-            if processed_item:
-                processed_news.append(processed_item)
-            
-            # Add 20 second delay between news items to avoid server overload
-            # Skip delay after the last item
-            if i < len(raw_news) - 1:
-                print(f"⏳ 等待20秒以避免访问过快...")
-                time.sleep(20)
+        print(f"✅ 成功获取 {len(raw_news)} 条新闻")
         
-        # Save to database
+        # Step 2: AI批量处理（JSON格式）- 包含翻译和总结
+        print("\n🤖 阶段2：AI批量处理（翻译 + 总结）")
+        processed_news = self.batch_process_news_with_ai(raw_news)
+        
+        if not processed_news:
+            print("❌ AI处理失败，没有获得有效结果")
+            return []
+        
+        print(f"✅ AI处理完成，得到 {len(processed_news)} 条结果")
+        
+        # Step 3: Save to database
+        print("\n💾 阶段3：保存到数据库")
         if processed_news:
             try:
                 success_count = self.database.insert_news_batch(processed_news)

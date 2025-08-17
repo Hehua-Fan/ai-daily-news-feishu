@@ -16,7 +16,7 @@ class VergeScraper:
     """The Verge news scraper for AI-related articles"""
     
     BASE_URL = "https://www.theverge.com"
-    AI_ARCHIVES_URL = "https://www.theverge.com/ai-artificial-intelligence/archives"
+    AI_ARCHIVES_URL = "https://www.theverge.com/ai-artificial-intelligence"
     SOURCE_TAG = "Verge"
     
     def __init__(self):
@@ -49,9 +49,13 @@ class VergeScraper:
         target_dates = self.get_recent_dates()
         print(f"🔍 The Verge: 查找日期 {target_dates}")
         
-        for page in range(1, 5):  # Limit pages due to potential rate limiting
-            url = f'{self.AI_ARCHIVES_URL}/{page}'
-            print(f"📄 正在抓取页面: {url}")
+        # Use the correct URL structure - only use the main AI page for now
+        # The Verge uses dynamic loading for pagination, so we'll focus on the main page
+        urls_to_try = [self.AI_ARCHIVES_URL]  # Just use the main AI page
+        
+        for page_num, url in enumerate(urls_to_try, 1):
+            
+            print(f"📄 正在抓取页面 {page_num}: {url}")
             
             try:
                 response = requests.get(url, headers=self.headers, timeout=30)
@@ -64,68 +68,151 @@ class VergeScraper:
                 response.raise_for_status()
                 soup = BeautifulSoup(response.text, 'lxml')
                 
-                # Try multiple selectors
-                cards = soup.find_all('div', attrs={"class": re.compile(r".*duet--content-cards--content-card.*")})
-                if not cards:
-                    # Fallback selector
-                    cards = soup.find_all('article')
-                    print(f"📋 使用备用选择器找到 {len(cards)} 个文章")
-                else:
-                    print(f"📋 页面 {page} 找到 {len(cards)} 个卡片")
+                # Look for articles based on The Verge's actual structure
+                articles = []
+                
+                # Method 1: Look for large article cards (featured articles)
+                # These are the main story cards visible in the screenshot
+                large_cards = soup.find_all('div', class_=re.compile(r'.*duet--content-cards--content-card.*'))
+                for card in large_cards:
+                    link = card.find('a', href=True)
+                    if link and link.get('href'):
+                        # Look for the title in h2 or h3 tags
+                        title_elem = card.find(['h2', 'h3'])
+                        if title_elem:
+                            articles.append({
+                                'container': card,
+                                'link': link,
+                                'title_elem': title_elem
+                            })
+                
+                # Method 2: Look for any article links with substantial text
+                if len(articles) < 2:  # If we don't have enough from large cards
+                    all_links = soup.find_all('a', href=True)
+                    for link in all_links:
+                        href = link.get('href', '')
+                        text = link.get_text(strip=True)
+                        
+                        # Filter for article-like links
+                        if (href.startswith('/') and 
+                            len(text) > 20 and  # Substantial text content
+                            any(keyword in text.lower() for keyword in ['ai', 'artificial intelligence', 'chatgpt', 'openai', 'anthropic', 'google', 'meta', 'tech']) and
+                            not any(skip in href.lower() for skip in ['author', 'tag', 'search', 'newsletter', 'podcast'])):
+                            
+                            # Try to find a parent container
+                            container = link.parent
+                            while container and container.name in ['span', 'em', 'strong']:
+                                container = container.parent
+                            
+                            articles.append({
+                                'container': container or link.parent,
+                                'link': link,
+                                'title_elem': link
+                            })
+                
+                # Method 3: Look specifically for headline patterns
+                if len(articles) < 2:
+                    headlines = soup.find_all(['h1', 'h2', 'h3'], string=re.compile(r'.*(AI|artificial intelligence|Anthropic|OpenAI|ChatGPT|Altman).*', re.I))
+                    for headline in headlines:
+                        link = headline.find('a', href=True) or headline.find_parent('a', href=True)
+                        if link:
+                            articles.append({
+                                'container': headline.parent,
+                                'link': link,
+                                'title_elem': headline
+                            })
+                
+                print(f"📋 页面 {page_num} 找到 {len(articles)} 个文章")
                 
                 found_in_page = 0
-                for card in cards:
+                for article in articles:
                     try:
-                        link_block = card.find('a')
-                        if not link_block:
-                            continue
-                            
-                        title = link_block.text.strip()
+                        container = article['container']
+                        link_block = article['link']
+                        title_elem = article['title_elem']
+                        
+                        title = title_elem.text.strip()
                         href = link_block.get('href')
                         
-                        # Find time element
-                        time_elem = card.find('time')
-                        if not time_elem:
-                            continue
-                            
-                        news_time = time_elem.get('datetime')
-                        if not news_time:
+                        if not title or not href:
                             continue
                         
-                        # Parse time format
-                        try:
-                            # Support multiple time formats
-                            if 'T' in news_time:
-                                news_date = datetime.strptime(news_time.split('T')[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                        # Make sure href is a full path
+                        if href.startswith('/'):
+                            href = href
+                        elif not href.startswith('http'):
+                            continue  # Skip invalid links
+                        
+                        # Look for content description in the container
+                        content_preview = ""
+                        if container:
+                            # Try to find description paragraphs
+                            desc_paragraphs = container.find_all('p')
+                            for p in desc_paragraphs:
+                                text = p.text.strip()
+                                if text and len(text) > 20:
+                                    content_preview = text[:200]
+                                    break
+                        
+                        # Look for time information
+                        time_elem = None
+                        if container:
+                            time_elem = container.find('time')
+                            if not time_elem:
+                                # Look for date strings in text
+                                time_strings = container.find_all(string=re.compile(r'Aug \d+|2025'))
+                                if time_strings:
+                                    # Use recent date as fallback
+                                    news_date = self.get_today_date()
+                                else:
+                                    news_date = self.get_today_date()
                             else:
-                                news_date = datetime.strptime(news_time, "%Y-%m-%d").strftime("%Y-%m-%d")
-                        except:
-                            print(f"⚠️  无法解析时间格式: {news_time}")
-                            continue
+                                datetime_attr = time_elem.get('datetime')
+                                if datetime_attr:
+                                    try:
+                                        if 'T' in datetime_attr:
+                                            news_date = datetime.strptime(datetime_attr.split('T')[0], "%Y-%m-%d").strftime("%Y-%m-%d")
+                                        else:
+                                            news_date = datetime_attr
+                                    except:
+                                        news_date = self.get_today_date()
+                                else:
+                                    news_date = self.get_today_date()
+                        else:
+                            news_date = self.get_today_date()
                         
-                        # Check if in target date range
-                        if news_date in target_dates and title and href:
+                        # Filter for AI/tech related content and recent dates
+                        if (news_date in target_dates and title and href and
+                            any(keyword in title.lower() or keyword in href.lower() 
+                                for keyword in ['ai', 'artificial intelligence', 'chatgpt', 'openai', 'google', 'meta', 'tech'])):
+                            
                             print(f"✅ 找到文章: {news_date}, {title[:50]}...")
-                            news_list.append({
+                            news_item = {
                                 'title': title,
                                 'href': href,
-                                'news_time': news_time,
+                                'news_time': news_date,
                                 'date': news_date,
                                 'tag': self.SOURCE_TAG
-                            })
+                            }
+                            
+                            # Add content preview if available
+                            if content_preview:
+                                news_item['content_preview'] = content_preview
+                                
+                            news_list.append(news_item)
                             found_in_page += 1
                             
                     except Exception as e:
                         print(f"❌ 处理文章时出错: {e}")
                         continue
                 
-                print(f"📊 页面 {page} 找到 {found_in_page} 篇目标日期的文章")
+                print(f"📊 页面 {page_num} 找到 {found_in_page} 篇目标日期的文章")
                 
-                if found_in_page == 0 and page > 1:
-                    break
+                if found_in_page == 0 and page_num > 1:
+                    break  # If no articles found and not first page, stop
                     
             except Exception as e:
-                print(f"❌ 抓取页面 {page} 时出错: {e}")
+                print(f"❌ 抓取页面 {page_num} 时出错: {e}")
                 continue
 
         print(f"🎯 总共找到 {len(news_list)} 篇 The Verge 文章")

@@ -99,7 +99,12 @@ class GitHubTrendingScraper:
                 return None
             
             repo_path = link_elem.get('href')
+            # 清理仓库名称，去掉可能的markdown格式和多余的空白字符
             repo_name = link_elem.text.strip()
+            # 移除markdown格式符号
+            repo_name = repo_name.replace('**', '').replace('*', '')
+            # 移除多余的空白字符和换行
+            repo_name = ' '.join(repo_name.split())
             full_link = f"{self.BASE_URL}{repo_path}"
             
             # Description
