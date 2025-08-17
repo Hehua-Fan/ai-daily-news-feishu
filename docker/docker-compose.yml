@@ -1,0 +1,31 @@
+services:
+  ai-news-bot:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: ai-news-bot
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+      - PYTHONPATH=/app/backend
+    volumes:
+      - ../logs:/app/logs
+      # 如果需要持久化配置，可以挂载配置文件
+      # - ../backend/config.yml:/app/backend/config.yml:ro
+    networks:
+      - ai-news-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('https://www.baidu.com', timeout=10)"]
+      interval: 5m
+      timeout: 30s
+      retries: 3
+      start_period: 1m
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  ai-news-network:
+    driver: bridge

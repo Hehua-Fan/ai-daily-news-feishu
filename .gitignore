@@ -1,0 +1,25 @@
+# IDE
+.idea
+.vscode
+
+# Python
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+
+# Environment
+.env
+backend/config.yml
+
+# Data
+*.db
+*.json
+
+# Logs
+*.log
+logs/
+
+# System
+.DS_Store
+Thumbs.db
