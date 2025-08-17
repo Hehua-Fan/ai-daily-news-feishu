@@ -20,10 +20,18 @@ class ProductHuntScraper:
     def __init__(self):
         """Initialize the Product Hunt scraper"""
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Referer': 'https://www.producthunt.com/',
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9,zh-CN;q=0.8,zh;q=0.7',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         }
     
     @staticmethod
@@ -41,63 +49,61 @@ class ProductHuntScraper:
         ]
     
     def get_title_and_link_list(self) -> List[Dict[str, Any]]:
-        """Scrape trending products from Product Hunt (weekly)"""
+        """Scrape trending products from Product Hunt (main page)"""
         news_list = []
-        target_dates = self.get_recent_dates(7)  # Check last 7 days for weekly
+        target_dates = self.get_recent_dates(7)  # Check last 7 days
         print(f"🔍 Product Hunt: 查找日期 {target_dates}")
         
-        # Try weekly leaderboard first
+        # Try main page instead of leaderboard to avoid 403
         try:
-            # Get current week's start date (Monday)
-            today = datetime.now()
-            days_since_monday = today.weekday()
-            monday = today - timedelta(days=days_since_monday)
-            week_str = monday.strftime("%Y/%m/%d")
+            import time
+            time.sleep(2)  # Add delay to avoid being blocked
             
-            url = f'{self.BASE_URL}/leaderboard/weekly/{week_str}'
-            print(f"📄 正在抓取本周排行榜: {url}")
+            url = f'{self.BASE_URL}'
+            print(f"📄 正在抓取主页: {url}")
             
             response = requests.get(url, headers=self.headers, timeout=30)
-            response.raise_for_status()
             
+            if response.status_code == 403:
+                print("⚠️  Product Hunt 主页也被阻止，跳过此来源")
+                return []
+            
+            response.raise_for_status()
             soup = BeautifulSoup(response.text, 'lxml')
             
-            # Look for product cards
-            products = soup.find_all('div', {'data-test': 'post-item'})
-            if not products:
-                # Fallback selector
-                products = soup.find_all('li', class_='styles_item__1t9xF')
+            # Look for product links on main page
+            product_links = soup.find_all('a', href=True)
+            product_links = [link for link in product_links if '/posts/' in link.get('href', '')]
             
-            print(f"📋 找到 {len(products)} 个产品")
+            print(f"📋 找到 {len(product_links)} 个产品链接")
             
             found_products = 0
-            for product in products:
+            seen_titles = set()  # Avoid duplicates
+            
+            for link in product_links[:20]:  # Limit to first 20 links
                 try:
-                    # Find product title link
-                    title_link = product.find('a', href=True)
-                    if not title_link:
+                    href = link.get('href')
+                    title = link.text.strip()
+                    
+                    if not title or len(title) < 3 or title in seen_titles:
                         continue
                     
-                    title = title_link.text.strip()
-                    href = title_link.get('href')
-                    
-                    if not title or not href:
-                        continue
+                    seen_titles.add(title)
                     
                     # Build full URL
                     if href.startswith('/'):
-                        link = f'{self.BASE_URL}{href}'
+                        full_link = f'{self.BASE_URL}{href}'
                     else:
-                        link = href
+                        full_link = href
                     
-                    # Filter AI/tech related products (simple keyword filter)
-                    ai_keywords = ['ai', 'artificial intelligence', 'machine learning', 'automation', 'tech', 'saas', 'productivity', 'analytics', 'data', 'software', 'app', 'tool', 'platform']
+                    # Filter AI/tech related products
+                    ai_keywords = ['ai', 'artificial intelligence', 'machine learning', 'automation', 'tech', 'saas', 'productivity', 'analytics', 'data', 'software', 'app', 'tool', 'platform', 'bot', 'assistant', 'smart']
                     if any(keyword in title.lower() for keyword in ai_keywords):
                         formatted_date = self.get_today_date()
                         print(f"✅ 找到AI/科技产品: {title[:50]}...")
                         news_list.append({
                             'title': title,
-                            'link': link,
+                            'link': full_link,
                             'date': formatted_date,
                             'tag': self.SOURCE_TAG
                         })
@@ -111,64 +117,11 @@ class ProductHuntScraper:
                     print(f"❌ 处理产品时出错: {e}")
                     continue
             
-            print(f"📊 本周排行榜找到 {found_products} 个AI/科技产品")
+            print(f"📊 主页找到 {found_products} 个AI/科技产品")
                 
         except Exception as e:
-            print(f"❌ 抓取本周排行榜时出错: {e}")
-            
-            # Fallback to daily if weekly fails
-            print("🔄 回退到日排行榜...")
-            today = datetime.now()
-            date_str = today.strftime("%Y/%m/%d")
-            formatted_date = today.strftime("%Y-%m-%d")
-            
-            try:
-                url = f'{self.BASE_URL}/leaderboard/daily/{date_str}'
-                print(f"📄 正在抓取今日排行榜: {url}")
-                
-                response = requests.get(url, headers=self.headers, timeout=30)
-                response.raise_for_status()
-                
-                soup = BeautifulSoup(response.text, 'lxml')
-                products = soup.find_all('div', {'data-test': 'post-item'})
-                
-                found_products = 0
-                for product in products[:5]:  # Limit to top 5 from daily
-                    try:
-                        title_link = product.find('a', href=True)
-                        if not title_link:
-                            continue
-                        
-                        title = title_link.text.strip()
-                        href = title_link.get('href')
-                        
-                        if not title or not href:
-                            continue
-                        
-                        if href.startswith('/'):
-                            link = f'{self.BASE_URL}{href}'
-                        else:
-                            link = href
-                        
-                        ai_keywords = ['ai', 'artificial intelligence', 'machine learning', 'automation', 'tech', 'saas', 'productivity', 'analytics', 'data']
-                        if any(keyword in title.lower() for keyword in ai_keywords):
-                            print(f"✅ 找到AI/科技产品: {title[:50]}...")
-                            news_list.append({
-                                'title': title,
-                                'link': link,
-                                'date': formatted_date,
-                                'tag': self.SOURCE_TAG
-                            })
-                            found_products += 1
-                            
-                    except Exception as e:
-                        print(f"❌ 处理产品时出错: {e}")
-                        continue
-                
-                print(f"📊 今日排行榜找到 {found_products} 个AI/科技产品")
-                
-            except Exception as e:
-                print(f"❌ 抓取今日排行榜也失败: {e}")
+            print(f"❌ 抓取Product Hunt主页时出错: {e}")
+            print("💡 Product Hunt可能有反爬虫机制，暂时跳过此来源")
         
         print(f"🎯 总共找到 {len(news_list)} 个 Product Hunt 产品")
         return news_list

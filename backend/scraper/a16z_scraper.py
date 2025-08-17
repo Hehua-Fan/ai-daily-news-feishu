@@ -53,33 +53,43 @@ class A16zScraper:
             
             soup = BeautifulSoup(response.text, 'lxml')
             
-            # Look for article links in the latest section
-            articles = soup.find_all('li', class_='')  # a16z uses simple li elements
-            if not articles:
-                # Fallback: look for any links that might be articles
+            # Look for article links based on a16z structure
+            # First try to find latest content section
+            latest_section = soup.find('div', class_='latest') or soup.find('section')
+            
+            if latest_section:
+                articles = latest_section.find_all('a', href=True)
+            else:
+                # Fallback: look for all links that look like articles
                 articles = soup.find_all('a', href=True)
+                # Filter for likely article links
+                articles = [a for a in articles if a.get('href') and ('/' in a.get('href')) and a.text.strip()]
             
             print(f"📋 找到 {len(articles)} 个潜在文章")
             
             found_articles = 0
+            seen_links = set()  # Avoid duplicates
+            
             for article in articles:
                 try:
-                    # Extract link and title
-                    if article.name == 'li':
-                        link_elem = article.find('a', href=True)
-                        if not link_elem:
-                            continue
-                        href = link_elem.get('href')
-                        title = link_elem.text.strip()
-                    else:  # article is already an 'a' tag
-                        href = article.get('href')
-                        title = article.text.strip()
+                    # Extract link and title - article should be an 'a' tag
+                    href = article.get('href')
+                    title = article.text.strip()
                     
-                    if not href or not title:
+                    if not href or not title or len(title) < 10:
                         continue
                     
-                    # Skip non-article links
-                    if any(skip in href for skip in ['#', 'mailto:', 'tel:', 'javascript:', '/team/', '/about/', '/jobs/']):
+                    # Skip duplicates
+                    if href in seen_links:
+                        continue
+                    seen_links.add(href)
+                    
+                    # Skip non-article links and external domains
+                    if any(skip in href for skip in ['#', 'mailto:', 'tel:', 'javascript:', '/team/', '/about/', '/jobs/', '/portfolio/', '/connect']):
+                        continue
+                    
+                    # Only allow a16z.com domain links, skip external links
+                    if href.startswith('http') and not href.startswith('https://a16z.com'):
                         continue
                     
                     # Filter for AI/tech content
@@ -87,10 +97,10 @@ class A16zScraper:
                     if not any(keyword in title.lower() for keyword in ai_keywords):
                         continue
                     
-                    # Build full URL
+                    # Build full URL - only for a16z.com domain
                     if href.startswith('/'):
                         link = f'{self.BASE_URL}{href}'
-                    elif href.startswith('http'):
+                    elif href.startswith('https://a16z.com'):
                         link = href
                     else:
                         continue
@@ -100,6 +110,7 @@ class A16zScraper:
                     current_date = self.get_today_date()
                     
                     print(f"✅ 找到文章: {title[:50]}...")
+                    print(f"   🔗 链接: {link}")
                     news_list.append({
                         'title': title,
                         'link': link,
