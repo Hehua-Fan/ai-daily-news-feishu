@@ -71,11 +71,28 @@ class ConfigManager:
         }
     
     def get_autoagentsai_config(self) -> Dict[str, str]:
-        """获取 AutoAgents AI 配置"""
+        """获取 AutoAgents AI 配置（保持向后兼容）"""
+        # 优先使用新的translate_agent配置，如果不存在则回退到旧配置
         return {
-            'agent_id': self.get('apis.autoagentsai.agent_id'),
-            'personal_auth_key': self.get('apis.autoagentsai.personal_auth_key'),
-            'personal_auth_secret': self.get('apis.autoagentsai.personal_auth_secret')
+            'agent_id': self.get('apis.autoagentsai.translate_agent.agent_id') or self.get('apis.autoagentsai.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.translate_agent.personal_auth_key') or self.get('apis.autoagentsai.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.translate_agent.personal_auth_secret') or self.get('apis.autoagentsai.personal_auth_secret')
+        }
+    
+    def get_translate_agent_config(self) -> Dict[str, str]:
+        """获取翻译专用 Agent 配置"""
+        return {
+            'agent_id': self.get('apis.autoagentsai.translate_agent.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.translate_agent.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.translate_agent.personal_auth_secret')
+        }
+    
+    def get_summary_agent_config(self) -> Dict[str, str]:
+        """获取总结专用 Agent 配置"""
+        return {
+            'agent_id': self.get('apis.autoagentsai.summary_agent.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.summary_agent.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.summary_agent.personal_auth_secret')
         }
     
     def get_supabase_config(self) -> Dict[str, str]:

@@ -47,24 +47,41 @@ class NewsHandler:
             Kr36Scraper()
         ]
         
-        # Initialize AI client (lazy loading)
-        self._ai_client = None
+        # Initialize AI clients (lazy loading)
+        self._translate_client = None
+        self._summary_client = None
         
-    def get_ai_client(self) -> ChatClient:
-        """Get AI client instance with lazy initialization"""
-        if self._ai_client is None:
+    def get_translate_client(self) -> ChatClient:
+        """Get translate AI client instance with lazy initialization"""
+        if self._translate_client is None:
             try:
-                ai_config = self.config.get_autoagentsai_config()
-                self._ai_client = ChatClient(
-                    agent_id=ai_config["agent_id"],
-                    personal_auth_key=ai_config["personal_auth_key"],
-                    personal_auth_secret=ai_config["personal_auth_secret"]
+                translate_config = self.config.get_translate_agent_config()
+                self._translate_client = ChatClient(
+                    agent_id=translate_config["agent_id"],
+                    personal_auth_key=translate_config["personal_auth_key"],
+                    personal_auth_secret=translate_config["personal_auth_secret"]
                 )
             except Exception as e:
-                print(f"❌ 初始化 AI 客户端失败: {e}")
-                print("💡 请检查 config.yml 中的 AutoAgents AI 配置")
+                print(f"❌ 初始化翻译 AI 客户端失败: {e}")
+                print("💡 请检查 config.yml 中的 translate_agent 配置")
                 raise e
-        return self._ai_client
+        return self._translate_client
+    
+    def get_summary_client(self) -> ChatClient:
+        """Get summary AI client instance with lazy initialization"""
+        if self._summary_client is None:
+            try:
+                summary_config = self.config.get_summary_agent_config()
+                self._summary_client = ChatClient(
+                    agent_id=summary_config["agent_id"],
+                    personal_auth_key=summary_config["personal_auth_key"],
+                    personal_auth_secret=summary_config["personal_auth_secret"]
+                )
+            except Exception as e:
+                print(f"❌ 初始化总结 AI 客户端失败: {e}")
+                print("💡 请检查 config.yml 中的 summary_agent 配置")
+                raise e
+        return self._summary_client
     
     @staticmethod
     def get_target_date() -> str:
@@ -72,11 +89,11 @@ class NewsHandler:
         return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     
     def translate_title(self, title: str) -> str:
-        """Translate news title to Chinese using AI"""
+        """Translate news title to Chinese using translate AI client"""
         prompt = f"请将以下英文新闻标题翻译成中文，只返回翻译结果，不要其他内容：\n\n{title}"
         
         try:
-            client = self.get_ai_client()
+            client = self.get_translate_client()
             content = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -87,11 +104,11 @@ class NewsHandler:
             return title  # Return original title if translation fails
     
     def summarize_content(self, content: str) -> str:
-        """Summarize news content in Chinese using AI"""
+        """Summarize news content in Chinese using summary AI client"""
         prompt = f"请对以下英文新闻内容用中文进行总结，总结内容不超过100个汉字，只返回总结结果：\n\n{content}"
         
         try:
-            client = self.get_ai_client()
+            client = self.get_summary_client()
             summary = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -102,7 +119,7 @@ class NewsHandler:
             return "新闻内容总结失败"
     
     def fetch_all_news(self) -> List[Dict[str, Any]]:
-        """Fetch news from all configured scrapers"""
+        """Fetch news from all configured scrapers (limit 3 per scraper)"""
         all_news = []
         
         for scraper in self.scrapers:
@@ -110,8 +127,12 @@ class NewsHandler:
                 scraper_name = scraper.__class__.__name__
                 print(f"📰 开始获取 {scraper_name} 新闻...")
                 news_list = scraper.get_news_list()
-                all_news.extend(news_list)
-                print(f"✅ {scraper_name} 获取到 {len(news_list)} 篇新闻")
+                
+                # Limit to 3 news items per scraper
+                limited_news = news_list[:3]
+                all_news.extend(limited_news)
+                
+                print(f"✅ {scraper_name} 获取到 {len(news_list)} 篇新闻，选取前 {len(limited_news)} 篇")
             except Exception as e:
                 print(f"❌ {scraper_name} 获取新闻失败: {e}")
                 continue
