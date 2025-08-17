@@ -95,6 +95,22 @@ class ConfigManager:
             'personal_auth_secret': self.get('apis.autoagentsai.summary_agent.personal_auth_secret')
         }
     
+    def get_translate_agent2_config(self) -> Dict[str, str]:
+        """获取第二个翻译 Agent 配置"""
+        return {
+            'agent_id': self.get('apis.autoagentsai.translate_agent2.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.translate_agent2.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.translate_agent2.personal_auth_secret')
+        }
+    
+    def get_summary_agent2_config(self) -> Dict[str, str]:
+        """获取第二个总结 Agent 配置"""
+        return {
+            'agent_id': self.get('apis.autoagentsai.summary_agent2.agent_id'),
+            'personal_auth_key': self.get('apis.autoagentsai.summary_agent2.personal_auth_key'),
+            'personal_auth_secret': self.get('apis.autoagentsai.summary_agent2.personal_auth_secret')
+        }
+    
     def get_supabase_config(self) -> Dict[str, str]:
         """获取 Supabase 配置"""
         return {

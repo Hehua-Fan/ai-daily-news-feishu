@@ -50,6 +50,11 @@ class NewsHandler:
         # Initialize AI clients (lazy loading)
         self._translate_client = None
         self._summary_client = None
+        self._translate_client2 = None
+        self._summary_client2 = None
+        
+        # Counter for alternating between agents
+        self._call_counter = 0
         
     def get_translate_client(self) -> ChatClient:
         """Get translate AI client instance with lazy initialization"""
@@ -83,17 +88,58 @@ class NewsHandler:
                 raise e
         return self._summary_client
     
+    def get_translate_client2(self) -> ChatClient:
+        """Get second translate AI client instance with lazy initialization"""
+        if self._translate_client2 is None:
+            try:
+                translate_config2 = self.config.get_translate_agent2_config()
+                self._translate_client2 = ChatClient(
+                    agent_id=translate_config2["agent_id"],
+                    personal_auth_key=translate_config2["personal_auth_key"],
+                    personal_auth_secret=translate_config2["personal_auth_secret"]
+                )
+            except Exception as e:
+                print(f"❌ 初始化第二个翻译 AI 客户端失败: {e}")
+                print("💡 请检查 config.yml 中的 translate_agent2 配置")
+                raise e
+        return self._translate_client2
+    
+    def get_summary_client2(self) -> ChatClient:
+        """Get second summary AI client instance with lazy initialization"""
+        if self._summary_client2 is None:
+            try:
+                summary_config2 = self.config.get_summary_agent2_config()
+                self._summary_client2 = ChatClient(
+                    agent_id=summary_config2["agent_id"],
+                    personal_auth_key=summary_config2["personal_auth_key"],
+                    personal_auth_secret=summary_config2["personal_auth_secret"]
+                )
+            except Exception as e:
+                print(f"❌ 初始化第二个总结 AI 客户端失败: {e}")
+                print("💡 请检查 config.yml 中的 summary_agent2 配置")
+                raise e
+        return self._summary_client2
+    
     @staticmethod
     def get_target_date() -> str:
         """Get target date for news (yesterday)"""
         return (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     
     def translate_title(self, title: str) -> str:
-        """Translate news title to Chinese using translate AI client"""
+        """Translate news title to Chinese using alternating translate AI clients"""
         prompt = f"请将以下英文新闻标题翻译成中文，只返回翻译结果，不要其他内容：\n\n{title}"
         
         try:
-            client = self.get_translate_client()
+            # Alternate between translate agents
+            self._call_counter += 1
+            if self._call_counter % 2 == 1:
+                client = self.get_translate_client()
+                agent_name = "translate1"
+            else:
+                client = self.get_translate_client2()
+                agent_name = "translate2"
+            
+            print(f"🌍 使用 {agent_name} 翻译标题")
             content = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -104,11 +150,19 @@ class NewsHandler:
             return title  # Return original title if translation fails
     
     def summarize_content(self, content: str) -> str:
-        """Summarize news content in Chinese using summary AI client"""
+        """Summarize news content in Chinese using alternating summary AI clients"""
         prompt = f"请对以下英文新闻内容用中文进行总结，总结内容不超过100个汉字，只返回总结结果：\n\n{content}"
         
         try:
-            client = self.get_summary_client()
+            # Alternate between summary agents (use same counter as translate for balance)
+            if self._call_counter % 2 == 1:
+                client = self.get_summary_client()
+                agent_name = "summary1"
+            else:
+                client = self.get_summary_client2()
+                agent_name = "summary2"
+            
+            print(f"📝 使用 {agent_name} 总结内容")
             summary = ""
             for event in client.invoke(prompt):
                 if event['type'] == 'token':
@@ -148,6 +202,11 @@ class NewsHandler:
             
             # Translate title and summarize content
             zh_title = self.translate_title(title)
+            
+            # Add 20 second delay between translation and summarization
+            print(f"⏳ 翻译完成，等待20秒后进行总结...")
+            time.sleep(20)
+            
             summary = self.summarize_content(content)
             
             return {
@@ -182,11 +241,11 @@ class NewsHandler:
             if processed_item:
                 processed_news.append(processed_item)
             
-            # Add 10 second delay between news items to avoid server overload
+            # Add 20 second delay between news items to avoid server overload
             # Skip delay after the last item
             if i < len(raw_news) - 1:
-                print(f"⏳ 等待10秒以避免访问过快...")
-                time.sleep(10)
+                print(f"⏳ 等待20秒以避免访问过快...")
+                time.sleep(20)
         
         # Save to database
         if processed_news:
