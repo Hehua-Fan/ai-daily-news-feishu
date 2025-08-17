@@ -1,0 +1,25 @@
+# AI News Bot 配置文件示例
+# 复制此文件为 config.yml 并填写实际的配置信息
+
+# 飞书机器人配置
+lark:
+  api_url: "https://open.feishu.cn/open-apis/bot/v2/hook/YOUR_BOT_HOOK_ID"
+  api_secret: "your_lark_api_secret_here"
+
+# API 配置
+apis:
+  # AutoAgents AI 配置 - 主要的翻译和总结服务
+  autoagentsai:
+    agent_id: "your_agent_id_here"
+    personal_auth_key: "your_personal_auth_key_here"
+    personal_auth_secret: "your_personal_auth_secret_here"
+
+# Supabase 数据库配置
+# 从 https://supabase.com 创建项目后获取
+supabase:
+  url: "https://your-project-id.supabase.co"
+  anon_key: "your_supabase_anon_key_here"
+
+# 数据库表配置
+database:
+  table_name: "ai_news"

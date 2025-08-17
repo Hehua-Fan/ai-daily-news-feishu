@@ -1,0 +1,9 @@
+beautifulsoup4
+python-dotenv
+requests
+schedule
+tqdm
+lxml
+supabase
+PyYAML
+autoagentsai
